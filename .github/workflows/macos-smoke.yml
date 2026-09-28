@@ -1,9 +1,9 @@
 name: macos-smoke
 
 # runs the app's self-test mode (STEMKIT_SMOKE=1) on a fresh macOS runner:
-# validates the full mac path end to end — the source-built arm64 ffmpeg
+# validates the Intel mac path end to end — the source-built x86_64 ffmpeg
 # (fetch-ffmpeg.sh compiles ffmpeg + libsoxr), the private-runtime
-# bootstrap, both engines (htdemucs + roformer vocals, MPS with cpu
+# bootstrap, both engines (htdemucs + roformer vocals, MPS when available with cpu
 # fallback), and the cuda fail-fast paths. The GPU engine install is
 # skipped (SUPPORTS_GPU is false on darwin; the install mechanics are
 # covered by windows-smoke). Called by release.yml on tags, also runnable
@@ -15,7 +15,7 @@ on:
 
 jobs:
   smoke:
-    runs-on: macos-latest
+    runs-on: macos-26-intel
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4

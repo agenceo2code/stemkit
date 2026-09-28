@@ -56,7 +56,21 @@ function build_mac_ffmpeg() {
   tar -xf "$TMP/ffmpeg.tar.xz" -C "$TMP"
   (
     cd "$TMP/ffmpeg-$FFMPEG_VERSION"
-    PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig" ./configure \
+
+    # FFmpeg's x86 assembly requires nasm/yasm. Intel Macs often don't have
+    # either installed by default, so keep the bundle self-contained by
+    # disabling x86 asm there. Audio conversion/resampling is not a hot path
+    # compared with the ML separation itself, so the performance impact is
+    # negligible for StemKit.
+    EXTRA_CONFIG=()
+    if [[ "$MAC_ARCH" == "x86_64" ]]; then
+      EXTRA_CONFIG+=(--disable-x86asm)
+    fi
+
+    CONFIG_LOG="$TMP/ffmpeg-configure.log"
+    BUILD_LOG="$TMP/ffmpeg-build.log"
+
+    if ! PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig" ./configure \
       --enable-libsoxr \
       --disable-autodetect \
       --enable-zlib \
@@ -67,8 +81,18 @@ function build_mac_ffmpeg() {
       --disable-debug \
       --pkg-config-flags=--static \
       --extra-cflags="-I$PREFIX/include -mmacosx-version-min=11.0" \
-      --extra-ldflags="-L$PREFIX/lib -mmacosx-version-min=11.0" >/dev/null
-    make --silent --jobs "$JOBS" >/dev/null
+      --extra-ldflags="-L$PREFIX/lib -mmacosx-version-min=11.0" \
+      "${EXTRA_CONFIG[@]}" >"$CONFIG_LOG" 2>&1; then
+      echo "ffmpeg configure failed. Last lines:"
+      tail -80 "$CONFIG_LOG" >&2
+      exit 1
+    fi
+
+    if ! make --jobs "$JOBS" >"$BUILD_LOG" 2>&1; then
+      echo "ffmpeg build failed. Last lines:"
+      tail -120 "$BUILD_LOG" >&2
+      exit 1
+    fi
   )
 
   mkdir -p "$OUT"

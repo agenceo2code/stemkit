@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import platform
 import struct
 import sys
 import time
@@ -45,6 +46,8 @@ NUM_OVERLAP = 2
 # batching >1 triggers pathological MPS paths (same runtime as fp32), so 1 it is
 BATCH_SIZE = 1
 MIN_CKPT_BYTES = 500_000_000
+
+IS_INTEL_MAC = sys.platform == "darwin" and platform.machine() in ("x86_64", "AMD64")
 
 
 def emit(**kwargs):
@@ -151,7 +154,9 @@ def resolve_device():
     if torch.cuda.is_available():
         return "cuda", True
     if torch.backends.mps.is_available():
-        return "mps", True
+        # Intel/AMD MPS is much more reliable in fp32 on the final x86_64
+        # PyTorch release. Apple Silicon keeps the faster fp16 path.
+        return "mps", not IS_INTEL_MAC
     return "cpu", False
 
 
@@ -248,7 +253,7 @@ def main():
         device, use_half = resolve_device()
     else:
         device = args.device
-        use_half = device in ("cuda", "mps")
+        use_half = device == "cuda" or (device == "mps" and not IS_INTEL_MAC)
     emit(type="progress", stage="separate", pct=0, message=f"loading vocals engine on {device}")
 
     started = time.time()

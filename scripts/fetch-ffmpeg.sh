@@ -6,34 +6,28 @@ OS="$(uname -s)"
 mkdir -p "$ROOT/extras"
 
 # the pipeline resamples with soxr, so every bundled ffmpeg must be built
-# with libsoxr. There is no public static macOS arm64 build with libsoxr
-# (evermeet.cx is x86_64-only, osxexperts.net ships arm64 without soxr), so
-# the mac path compiles ffmpeg + soxr from source — Apple Silicon only,
-# matching the arm64-only electron build
+# with libsoxr. On macOS compile ffmpeg + soxr natively for the current
+# architecture. This supports both upstream Apple Silicon builds and the
+# o2code Intel/x86_64 build without carrying a foreign-architecture binary
 SOXR_VERSION="0.1.3"
 FFMPEG_VERSION="9.0.2"
+
+MAC_ARCH="$(uname -m)"
+if [[ "$OS" == "Darwin" && "$MAC_ARCH" != "arm64" && "$MAC_ARCH" != "x86_64" ]]; then
+  echo "unsupported macOS architecture: $MAC_ARCH"
+  exit 1
+fi
 
 function mac_ffmpeg_is_usable() {
   local bin="$1"
   [[ -x "$bin" ]] || return 1
-  file "$bin" 2>/dev/null | grep -q arm64 || return 1
+  file "$bin" 2>/dev/null | grep -q "$MAC_ARCH" || return 1
   "$bin" -hide_banner -buildconf 2>/dev/null | grep -q -- --enable-libsoxr
 }
 
 function build_mac_ffmpeg() {
   local out="$1"
-  # hw.optional.arm64 is kernel truth — a shell/binary running under Rosetta
-  # makes uname -m report x86_64
-  if [[ "$(sysctl -n hw.optional.arm64 2>/dev/null)" != "1" ]]; then
-    echo "the macOS bundle targets Apple Silicon — run this on an arm64 Mac"
-    exit 1
-  fi
-  if [[ "$(uname -m)" != "arm64" ]]; then
-    # this script itself is running translated (e.g. an x86_64 anaconda or
-    # Homebrew bash resolved from PATH) — re-exec natively so clang builds
-    # the arm64 slice configure would otherwise pick
-    exec arch -arm64 /bin/bash "$0" "$@"
-  fi
+  echo "building native macOS audio tools for $MAC_ARCH..."
   if ! command -v cmake >/dev/null 2>&1; then
     echo "cmake is required to build the bundled ffmpeg — install it first (e.g. brew install cmake)"
     exit 1
@@ -44,7 +38,7 @@ function build_mac_ffmpeg() {
   PREFIX="$TMP/prefix"
   JOBS="$(sysctl -n hw.ncpu)"
 
-  echo "building libsoxr $SOXR_VERSION (arm64)..."
+  echo "building libsoxr $SOXR_VERSION ($MAC_ARCH)..."
   curl -fsSL -o "$TMP/soxr.tar.gz" "https://github.com/chirlu/soxr/archive/refs/tags/$SOXR_VERSION.tar.gz"
   tar -xzf "$TMP/soxr.tar.gz" -C "$TMP"
   cmake -S "$TMP/soxr-$SOXR_VERSION" -B "$TMP/soxr-build" \
@@ -57,7 +51,7 @@ function build_mac_ffmpeg() {
     -DCMAKE_INSTALL_PREFIX="$PREFIX" >/dev/null
   cmake --build "$TMP/soxr-build" --target install --parallel "$JOBS" >/dev/null
 
-  echo "building ffmpeg $FFMPEG_VERSION (arm64, static libsoxr) — this takes a few minutes..."
+  echo "building ffmpeg $FFMPEG_VERSION ($MAC_ARCH, static libsoxr) — this takes a few minutes..."
   curl -fsSL -o "$TMP/ffmpeg.tar.xz" "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz"
   tar -xf "$TMP/ffmpeg.tar.xz" -C "$TMP"
   (

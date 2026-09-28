@@ -36,6 +36,16 @@ const IS_WIN = process.platform === 'win32'
 const EXE = IS_WIN ? '.exe' : ''
 const VENV_BIN = IS_WIN ? 'Scripts' : 'bin'
 
+const IS_MAC_INTEL = process.platform === 'darwin' && process.arch === 'x64'
+const DEFAULT_TORCH_VERSION = IS_MAC_INTEL ? '2.2.2' : '2.5.1'
+
+// PyTorch 2.2.x is the final macOS x86_64 line. Intel Macs with supported
+// AMD GPUs can expose Metal through the MPS backend. Let unsupported MPS
+// operators fall back to CPU instead of aborting the whole separation.
+if (IS_MAC_INTEL && !process.env.PYTORCH_ENABLE_MPS_FALLBACK) {
+  process.env.PYTORCH_ENABLE_MPS_FALLBACK = '1'
+}
+
 /* CUDA torch (the NVIDIA GPU engine swap) works on windows and linux; ROCm
    torch (AMD) is linux-only. macOS stays on MPS/CPU via the default torch
    build */
@@ -1207,8 +1217,8 @@ export async function bootstrap(): Promise<boolean> {
           'install',
           '--progress-bar',
           'off',
-          'torch==2.5.1',
-          'torchaudio==2.5.1',
+          `torch==${DEFAULT_TORCH_VERSION}`,
+          `torchaudio==${DEFAULT_TORCH_VERSION}`,
           '--index-url',
           'https://download.pytorch.org/whl/cpu'
         ])
@@ -1231,8 +1241,8 @@ export async function bootstrap(): Promise<boolean> {
         '--progress-bar',
         'off',
         'demucs==4.0.1',
-         'torch==2.5.1',
-        'torchaudio==2.5.1',
+         `torch==${DEFAULT_TORCH_VERSION}`,
+        `torchaudio==${DEFAULT_TORCH_VERSION}`,
         'numpy<2',
         'beartype',
         'rotary-embedding-torch',
